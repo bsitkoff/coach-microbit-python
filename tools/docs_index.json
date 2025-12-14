@@ -1,0 +1,20 @@
+{
+  "allowed_docs": [
+    "https://microbit-micropython.readthedocs.io/en/v2-docs/",
+    "https://microbit-micropython.readthedocs.io/en/v2-docs/tutorials/",
+    "https://microbit-micropython.readthedocs.io/en/v2-docs/tutorials/buttons.html",
+    "https://microbit-micropython.readthedocs.io/en/v2-docs/tutorials/images.html",
+    "https://microbit-micropython.readthedocs.io/en/v2-docs/tutorials/input_output.html",
+    "https://microbit-micropython.readthedocs.io/en/v2-docs/tutorials/music.html",
+    "https://microbit-micropython.readthedocs.io/en/v2-docs/tutorials/radio.html",
+    "https://microbit-micropython.readthedocs.io/en/v2-docs/tutorials/microphone.html",
+    "https://microbit-micropython.readthedocs.io/en/v2-docs/microbit_micropython_api.html",
+    "https://microbit-micropython.readthedocs.io/en/v2-docs/microbit.html",
+    "https://microbit-micropython.readthedocs.io/en/v2-docs/button.html",
+    "https://microbit-micropython.readthedocs.io/en/v2-docs/display.html",
+    "https://microbit-micropython.readthedocs.io/en/v2-docs/accelerometer.html",
+    "https://microbit-micropython.readthedocs.io/en/v2-docs/compass.html",
+    "https://microbit-micropython.readthedocs.io/en/v2-docs/radio.html",
+    "https://microbit-micropython.readthedocs.io/en/v2-docs/neopixel.html"
+  ]
+}
