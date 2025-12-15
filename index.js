@@ -22,4 +22,121 @@ You are “Micro:bit Python Coach,” helping students learn BBC micro:bit Micro
 
   // -----------------------------------------
   // Collect python files with SAFE debugging
-  // -----------------------------------
+  // -----------------------------------------
+  async function collectPythonFiles() {
+    dbg("Collecting python files...");
+
+    if (!codioIDE.workspace) {
+      dbg("workspace MISSING");
+      return "";
+    }
+
+    if (typeof codioIDE.workspace.getFileTree !== "function") {
+      dbg("getFileTree() NOT available");
+      return "";
+    }
+
+    let tree;
+    try {
+      tree = await codioIDE.workspace.getFileTree();
+      dbg("getFileTree() returned a tree");
+    } catch (e) {
+      dbg("getFileTree() ERROR: " + e.message);
+      return "";
+    }
+
+    const files = [];
+    scan(tree, "", files);
+
+    dbg("Python files found: " + files.join(", "));
+
+    let dump = "";
+    for (const f of files) {
+      try {
+        const content = await codioIDE.workspace.readFile(f);
+        dump += `\n### File: ${f}\n\`\`\`\n${content}\n\`\`\`\n`;
+      } catch (e) {
+        dbg("readFile ERROR for " + f + ": " + e.message);
+      }
+    }
+
+    return dump;
+  }
+
+  function scan(node, prefix, out) {
+    if (!node.children) return;
+    for (const child of node.children) {
+      const full = prefix ? prefix + "/" + child.name : child.name;
+      if (child.type === "file" && child.name.toLowerCase().endsWith(".py")) {
+        out.push(full);
+      }
+      if (child.type === "directory") {
+        scan(child, full, out);
+      }
+    }
+  }
+
+  // -----------------------------------------
+  // Button Registration
+  // -----------------------------------------
+  codioIDE.coachBot.register("microbitHelpButton", "I have a micro:bit question", onPress);
+
+  async function onPress() {
+    dbg("Button pressed.");
+
+    // Try to get context
+    let context;
+    try {
+      context = await codioIDE.coachBot.getContext();
+      dbg("Context received.");
+    } catch (e) {
+      dbg("getContext ERROR: " + e.message);
+      return;
+    }
+
+    // Try to load python files
+    const pythonDump = await collectPythonFiles();
+    if (pythonDump.length === 0) {
+      dbg("No python files loaded.");
+    } else {
+      dbg("Python file context prepared.");
+    }
+
+    // Begin chat loop
+    let messages = [];
+    while (true) {
+      const input = await codioIDE.coachBot.input();
+      if (input.toLowerCase() === "thanks") break;
+
+      const firstTurn = messages.length === 0;
+
+      messages.push({
+        role: "user",
+        content: firstTurn
+          ? input + "\n\n---\n\n" + pythonDump
+          : input
+      });
+
+      dbg("Sending request to model...");
+
+      let result;
+      try {
+        result = await codioIDE.coachBot.ask(
+          { systemPrompt, messages, context },
+          { preventMenu: true }
+        );
+      } catch (e) {
+        dbg("ask() ERROR: " + e.message);
+        break;
+      }
+
+      messages.push({ role: "assistant", content: result.result });
+
+      if (messages.length > 10) messages.splice(0, 2);
+    }
+
+    codioIDE.coachBot.write("You're welcome!");
+    codioIDE.coachBot.showMenu();
+  }
+
+})(window.codioIDE, window);
