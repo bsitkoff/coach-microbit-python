@@ -68,53 +68,65 @@ When refusing a full-solution request, keep this shape: a one-sentence refusal, 
 
   const exitPhrases = ["thanks", "thank you", "bye", "done", "exit", "quit", "stop", "no thanks", "i'm good", "im good", "that's all", "thats all"];
 
-  // Collect .py files from workspace (supplement to context.files)
-  async function collectPythonFiles() {
+  // Collect .py files via codioIDE.files (supplement to context.files, which
+  // only lists files currently OPEN in the editor). codioIDE.workspace does
+  // NOT exist in the Custom Assistant runtime — codioIDE.files is the
+  // supported channel: https://codio.github.io/client/codioIDE.files.html
+  async function collectPythonFiles(skipPaths) {
     let out = "";
     const totalBudget = 40000;
-    if (!codioIDE.workspace || !codioIDE.workspace.getFileTree) return out;
+    const F = codioIDE.files;
+    if (!F || typeof F.getStructure !== "function" || typeof F.getContent !== "function") return out;
 
+    let files = [];
     try {
-      const tree = await codioIDE.workspace.getFileTree();
-      const files = findRelevantFiles(tree);
-
-      for (const filePath of files) {
-        if (out.length >= totalBudget) break;
-
-        try {
-          const content = await codioIDE.workspace.readFile(filePath);
-          const maxLen = Math.min(15000, totalBudget - out.length);
-
-          if (content.length <= maxLen) {
-            out += `\nFile: ${filePath}\n${content}\n`;
-          } else {
-            out += `\nFile: ${filePath} (truncated)\n${content.slice(0, maxLen)}\n...(truncated)\n`;
-          }
-        } catch (err) {
-          // Silent
-        }
-      }
+      files = findRelevantFiles(await F.getStructure(), "");
     } catch (err) {
-      // Silent
+      return out;
+    }
+
+    for (const filePath of files) {
+      if (out.length >= totalBudget) break;
+      if (skipPaths && skipPaths.has(normalizePath(filePath))) continue;
+
+      try {
+        const content = await F.getContent(filePath);
+        if (typeof content !== "string" || content.length === 0) continue;
+        const maxLen = Math.min(15000, totalBudget - out.length);
+
+        if (content.length <= maxLen) {
+          out += `\nFile: ${filePath}\n${content}\n`;
+        } else {
+          out += `\nFile: ${filePath} (truncated)\n${content.slice(0, maxLen)}\n...(truncated)\n`;
+        }
+      } catch (err) {
+        // Silent
+      }
     }
 
     return out;
   }
 
-  function findRelevantFiles(node, path = "") {
+  function normalizePath(p) {
+    return String(p).replace(/^\.\//, "").replace(/^\//, "");
+  }
+
+  // getStructure() returns a name->value MAP: a file's value is a leaf (Codio
+  // uses 1), a directory's value is a nested map — not an array of nodes.
+  function findRelevantFiles(node, path) {
     let out = [];
-    if (!node.children) return out;
+    if (!node || typeof node !== "object") return out;
 
-    for (const item of node.children) {
-      const full = path ? `${path}/${item.name}` : item.name;
+    for (const name in node) {
+      if (!Object.prototype.hasOwnProperty.call(node, name)) continue;
+      if (name.startsWith(".")) continue;
+      const full = path ? `${path}/${name}` : name;
+      const value = node[name];
 
-      if (item.type === "file") {
-        const low = item.name.toLowerCase();
-        if (!item.name.startsWith(".") && low.endsWith(".py")) {
-          out.push(full);
-        }
-      } else if (item.type === "directory" && !item.name.startsWith(".")) {
-        out = out.concat(findRelevantFiles(item, full));
+      if (value && typeof value === "object") {
+        out = out.concat(findRelevantFiles(value, full));
+      } else if (name.toLowerCase().endsWith(".py")) {
+        out.push(full);
       }
     }
     return out;
@@ -142,8 +154,9 @@ When refusing a full-solution request, keep this shape: a one-sentence refusal, 
       filesContent = context.files.map(f => `File: ${f.path}\n${f.content}`).join('\n\n');
     }
 
-    // Supplement with workspace .py files (may catch files context.files misses)
-    const workspacePy = await collectPythonFiles();
+    // Supplement with project .py files (may catch files context.files misses)
+    const openPaths = new Set((context.files || []).map(f => normalizePath(f.path)));
+    const workspacePy = await collectPythonFiles(openPaths);
     if (workspacePy) {
       filesContent += (filesContent ? '\n\n' : '') + workspacePy;
     }
