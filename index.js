@@ -1,6 +1,8 @@
 // Microbit Coach Extension
 (async function(codioIDE, window) {
 
+  const VERSION = "1.9.0";
+
   // Allowed docs list (from tools/docs_index.json)
   const allowedDocs = [
     "https://microbit-micropython.readthedocs.io/en/v2-docs/",
@@ -135,20 +137,13 @@ When refusing a full-solution request, keep this shape: a one-sentence refusal, 
   // Register the button in Codio
   codioIDE.coachBot.register("microbitHelp", "Microbit Coach", onPress);
 
-  async function onPress() {
-    let messages = [];
-
+  // Build the context-bearing first message from a fresh getContext() +
+  // codioIDE.files read. Re-run before every ask() so the coach sees the
+  // student's latest edits, not their code as of the button press.
+  async function buildContextMessage(initialInput) {
     const context = await codioIDE.coachBot.getContext();
 
-    let initialInput;
-    try {
-      initialInput = await codioIDE.coachBot.input("What can I help you with?");
-    } catch (e) {
-      codioIDE.coachBot.showMenu();
-      return;
-    }
-
-    // Build file context from context.files + workspace .py files
+    // Build file context from context.files + project .py files
     let filesContent = "";
     if (context.files && context.files.length > 0) {
       filesContent = context.files.map(f => `File: ${f.path}\n${f.content}`).join('\n\n');
@@ -173,7 +168,7 @@ When refusing a full-solution request, keep this shape: a one-sentence refusal, 
       ? context.assignmentData.name
       : null;
 
-    const initialUserPrompt = `Here are the student's files:
+    return `Here are the student's files (current as of their latest question):
 <files>
 ${filesContent}
 </files>
@@ -183,8 +178,34 @@ ${guideContent}
 </guide>
 ${assignmentName ? `\nAssignment: ${assignmentName}\n` : ''}
 The student says: ${initialInput}`;
+  }
 
-    messages.push({ "role": "user", "content": initialUserPrompt });
+  async function onPress() {
+    codioIDE.coachBot.write(
+      `Microbit Coach v${VERSION} - Ask me your micro:bit questions!`,
+      codioIDE.coachBot.MESSAGE_ROLES.ASSISTANT
+    );
+
+    let messages = [];
+
+    let initialInput;
+    while (true) {
+      try {
+        initialInput = await codioIDE.coachBot.input("What can I help you with?");
+      } catch (e) {
+        codioIDE.coachBot.showMenu();
+        return;
+      }
+
+      if (initialInput === "version") {
+        codioIDE.coachBot.write(`Current version: ${VERSION}`, codioIDE.coachBot.MESSAGE_ROLES.ASSISTANT);
+        continue;
+      }
+
+      break;
+    }
+
+    messages.push({ "role": "user", "content": await buildContextMessage(initialInput) });
 
     try {
       codioIDE.coachBot.showThinkingAnimation();
@@ -208,12 +229,24 @@ The student says: ${initialInput}`;
         break;
       }
 
+      if (input === "version") {
+        codioIDE.coachBot.write(`Current version: ${VERSION}`, codioIDE.coachBot.MESSAGE_ROLES.ASSISTANT);
+        continue;
+      }
+
       const trimmedInput = input.trim().toLowerCase();
       if (exitPhrases.includes(trimmedInput)) {
         break;
       }
 
       messages.push({ "role": "user", "content": input });
+
+      // Refresh the context block so the coach sees the student's latest edits
+      try {
+        messages[0] = { "role": "user", "content": await buildContextMessage(initialInput) };
+      } catch (e) {
+        // Keep the previous context if the refresh fails
+      }
 
       try {
         codioIDE.coachBot.showThinkingAnimation();
